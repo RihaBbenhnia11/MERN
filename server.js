@@ -1,144 +1,26 @@
-const express = require('express'); // 1. Charger la bibliothèque Express
-const app = express(); // 2. Créer l'application : c'est notre serveur
+const express = require("express");
+const articleRoutes = require("./routes/articleRoutes");
+const userRoutes = require("./routes/userRoutes");
+const app = express();
 const PORT = 3000;
-app.use( express.json()) ;
 
-// 3. Une route : quand un client demande GET /, Express exécute cette fonction
-app.get('/', (req, res) => {
-  res.json({ message: "Bonjour, je suis l'API du blog" });
-});
+// Middleware pour lire les données JSON
+app.use(express.json());
 
-// Nos données. Elles reviennent à l'état initial à chaque redémarrage :
-// MongoDB les rendra permanentes à la séance 3.
-const articles = [
-  { id: 1, title: 'Bienvenue sur le blog', author: 'Admin' },
-  { id: 2, title: 'Mon premier serveur Express', author: 'Aya' },
-  { id: 3, title: 'Tester une API avec Postman', author: 'Aya' }
-];
+// Routes articles
+app.use("/api/articles", articleRoutes);
 
-// GET /api/articles -> tous les articles
-// GET /api/articles?author=Aya -> seulement ceux d'Aya
-app.get('/api/articles', (req, res) => {
-  const { author } = req.query; // = const author = req.query.author;
-  let resultat = articles;
+// Routes utilisateurs
+app.use("/api/users", userRoutes);
 
-  if (author) { // Si le client a précisé ?author=...
-    resultat = articles.filter(a => a.author === author);
-  }
-
-  res.json({ total: resultat.length, articles: resultat });
-});
-
-
-
-
-// GET /api/articles -> tous les articles
-app.get('/api/articles', (req, res) => {
-  res.json({ total: articles.length, articles: articles });
-});
-
-// GET /api/articles/2 -> l'article dont l'id vaut 2
-app.get('/api/articles/:id', (req, res) => {
-  const id = Number(req.params.id); // "2" -> 2
-  const article = articles.find(a => a.id === id);
-
-  if (!article) {
-    return res.status(404).json({ error: `Article ${id} introuvable` });
-  }
-
-  res.json(article);
-});
-
-let prochainId =4;
-// POST /api/articles -> ajouter un nouvel article
-app.post('/api/articles', (req, res) => {
-  const { title, author } = req.body; // Déstructuration
-
-  if (!title || !author) { // Validation : les deux champs sont obligatoires
-    return res.status(400).json({ error: "Le titre et l'auteur sont obligatoires" });
-  }
-
-  const nouvelArticle = { id: prochainId, title: title, author: author };
-  prochainId = prochainId + 1;
-  articles.push(nouvelArticle);
-
-  res.status(201).json({ message: 'Article créé', article: nouvelArticle });
-});
-
-//----------------
-//Exercice 1:
-//1.
-app.get('/about',(req,res)=>{
+// Route d'accueil
+app.get("/", (req, res) => {
     res.json({
-        application: "API du blog",
-        nom: "Rihab",
-        version: "1.0.0"
+        message: "API du Blog - Serveur Modulaire Opérationnel (SoC)"
     });
-})
-
-//2.
-
-const users = [
-    { id: 1, name: "Aya",email: "aya@gmail.com" },
-    {id: 2,name: "Youssef", email: "youssef@gmail.com" },
-    { id: 3, name: "Rihab",email: "rihab@gmail.com"}
-];
-
-//5.
-app.get("/api/users", (req, res) => {
-
-    const { name } = req.query;
-    
-    let resultat = users;
-
-    if (name) {
-        resultat = users.filter(u => u.name === name);
-    }
-
-    res.json(resultat);
-});
-//2.
-app.get("/api/users", (req, res) => {
-    res.json(users);
 });
 
-//3.
-app.get("/api/users/:id", (req, res) => {
-    //récupérer l'id
-    const id = Number(req.params.id);
-    //chercher user by id
-    const user = users.find(u => u.id === id);
-
-    if (!user) {
-        return res.status(404).json({error: `Utilisateur ${id} introuvable` });
-    }
-
-    res.json(user);
-});
-
-//4.
-app.post("/contact", (req, res) => {
-
-    const { email, message } = req.body;
-
-    if (!email || !message) {
-        return res.status(400).json({error: "L'email et le message sont obligatoires" });
-    }
-
-    res.status(200).json({message: "Merci, votre message a bien été reçu"});
-});
-
-
-
-
-
-
-
-
-//----------------
-
-
-// 4. Démarrer le serveur : il attend les requêtes sur le port 3000
+// Démarrage du serveur
 app.listen(PORT, () => {
-  console.log(`Serveur disponible sur http://localhost:${PORT}`);
+    console.log(`Serveur modulaire en écoute sur http://localhost:${PORT}`);
 });
