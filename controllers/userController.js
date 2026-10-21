@@ -1,122 +1,221 @@
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('../models/userModel');
-const {estNonVide, estEmailValide} = require('../utils/validators');
 
-// 1. Obtenir un utilisateur par son ID
-const getUserById = async (req, res) => {
-    try {
-        const user = await User.findById(req.params.id);
-
-        if (!user) {
-            return res.status(404).json({
-                error: `Utilisateur ${req.params.id} non trouve`
-            });
-        }
-
-        res.status(200).json(user);
-    } 
-    catch (err) {
-    if (err.name === "CastError") {
-        return res.status(400).json({
-            message: "Identifiant de ressource invalide (format ObjectId attendu)"
-        });
-    }
-
-    return res.status(500).json({
-        message: err.message
-    });
-}
+// Génération du token JWT
+const generateToken = (id, role) => {
+  return jwt.sign(
+    { id, role },
+    process.env.JWT_SECRET,
+    { expiresIn: '1d' }
+  );
 };
 
-// 2. Obtenir tous les utilisateurs avec filtre par rôle
-const getAllUsers = async (req, res) => {
-    try {
-        const { role } = req.query;
-        const filtre = role ? { role } : {};
-
-        const users = await User.find(filtre);
-
-        res.status(200).json({
-            total: users.length,
-            users
-        });
-    } catch (err) {
-        res.status(500).json({
-            error: err.message
-        });
-    }
-};
-
-// 3. Créer un nouvel utilisateur
+/*
+// Ancien contrôleur createUser (conservé en commentaire)
 const createUser = async (req, res) => {
   try {
-    const { name, email, age, role } = req.body;
-
-    if (!name || !email) {
-      return res.status(400).json({ message: "Le nom et l'email sont requis" });
-    }
-
-    // Vérification de doublon d'email
-    const exists = await User.findOne({ email });
-    if (exists) {
-      return res.status(409).json({ message: "Cet email est déjà utilisé" });
-    }
-
-    const user = await User.create({ name, email, age, role });
+    const user = await User.create(req.body);
     res.status(201).json(user);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+*/
+
+// POST /api/users/register (Inscription)
+const registerUser = async (req, res) => {
+  try {
+    const { name, email, password, age } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email, and password are required' });
+    }
+
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(409).json({ message: 'Email is already registered' });
+    }
+    
+    // Hachage securise avec sel ( Salt factor = 10)
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      age,
+      role: 'user' // Rôle par défaut
+    });
+
+    res.status(201).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      token: generateToken(user._id, user.role)
+    });
+  } catch (err) {
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ message: err.message });
+    }
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// POST /api/users/login (Connexion)
+const loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    res.status(200).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      token: generateToken(user._id, user.role)
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// 4. Supprimer un utilisateur
-
-const deleteUser = async (req, res) => {
-    try {
-        const id = req.params.id;
-
-        // Vérifier si l'utilisateur existe
-        const user = await User.findById(id);
-
-        if (!user) {
-            return res.status(404).json({
-                message: "Utilisateur non trouvé"
-            });
-        }
-
-        // Vérifier si cet utilisateur possède des articles
-        const article = await Article.findOne({ author: id });
-
-        if (article) {
-            return res.status(400).json({
-                message: "Impossible de supprimer un utilisateur ayant des articles publies"
-            });
-        }
-
-        // Supprimer l'utilisateur s'il n'a aucun article
-        await User.findByIdAndDelete(id);
-
-        return res.status(200).json({
-            message: "Utilisateur supprimé avec succès"
-        });
-
-    } catch (err) {
-        if (err.name === "CastError") {
-            return res.status(400).json({
-                message: "Identifiant de ressource invalide (format ObjectId attendu)"
-            });
-        }
-
-        return res.status(500).json({
-            message: err.message
-        });
-    }
+// GET /api/users/profile (Profil protégé)
+const getUserProfile = async (req, res) => {
+  try {
+    res.status(200).json(req.user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 };
 
+// GET /api/users (Accès Admin uniquement)
+const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find().select('-password');
+    res.status(200).json(users);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+// PUT /api/users/update-password
+const updatePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
 
-// Exporter les fonctions avec les anciens noms
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        message: 'Ancien et nouveau mots de passe obligatoires'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message: 'Le nouveau mot de passe doit comporter au moins 6 caractères'
+      });
+    }
+
+    // Récupérer l'utilisateur avec son mot de passe haché
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'Utilisateur introuvable'
+      });
+    }
+
+    // Vérifier l'ancien mot de passe
+    const isMatch = await bcrypt.compare(
+      oldPassword,
+      user.password
+    );
+
+    if (!isMatch) {
+      return res.status(401).json({
+        message: 'Ancien mot de passe incorrect'
+      });
+    }
+
+    // Hacher le nouveau mot de passe
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+
+    await user.save();
+
+    return res.status(200).json({
+      message: 'Mot de passe modifié avec succès'
+    });
+  } catch (err) {
+    return res.status(500).json({
+      message: err.message
+    });
+  }
+};
+// PUT /api/users/:id/role
+const updateUserRole = async (req, res) => {
+  try {
+    const { role } = req.body;
+
+    if (!['user', 'admin'].includes(role)) {
+      return res.status(400).json({
+        message: 'Rôle invalide : user ou admin requis'
+      });
+    }
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'Utilisateur introuvable'
+      });
+    }
+
+    user.role = role;
+    await user.save();
+
+    return res.status(200).json({
+      message: 'Rôle modifié avec succès',
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      return res.status(400).json({
+        message: 'Identifiant invalide'
+      });
+    }
+
+    return res.status(500).json({
+      message: err.message
+    });
+  }
+};
+
 module.exports = {
-    getAllUsers,
-    getUserById,
-    createUser,
-    deleteUser
+  // createUser,
+  registerUser,
+  loginUser,
+  getUserProfile,
+  getAllUsers,
+  updatePassword,
+  updateUserRole
 };

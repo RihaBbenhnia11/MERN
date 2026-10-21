@@ -38,7 +38,13 @@ const userSchema = new mongoose.Schema(
      phone: {
     type: String,
     match: [/^\d{8}$/, "Numéro de 8 chiffres requis"]
-    }
+    },
+
+   password: {
+   type: String,
+   required: [true, 'Password is required'],
+   minlength: [6, 'Password must be at least 6 characters long']
+},
   },
   { timestamps: true } // Ajoute automatiquement createdAt et updatedAt
 );
